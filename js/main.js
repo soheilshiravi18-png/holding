@@ -6,22 +6,50 @@
   if (window.gsap && window.ScrollTrigger) gsap.registerPlugin(ScrollTrigger);
 
   /* ---------------------------------------------------------------
-     Gallery data — captions matched to the curated stills.
+     Gallery — auto-discovers images instead of a hard-coded list.
+     Just drop new files into assets/gallery/ named shot_01, shot_02,
+     shot_03 ... up to shot_30, in any of the extensions below, and
+     they will appear automatically — no code edits needed.
   --------------------------------------------------------------- */
-  const galleryItems = [
-    { src: 'assets/gallery/shot_01.webp', caption: 'نمای هوایی ورودی و استخر اختصاصی', big: true },
-    { src: 'assets/gallery/shot_04.webp', caption: 'نمای شیشه‌ای ورودی اصلی ساختمان' },
-    { src: 'assets/gallery/shot_03.webp', caption: 'لابی ورودی و پارکینگ نمایشی' },
-    { src: 'assets/gallery/shot_06.webp', caption: 'آشپزخانه و فضای نشیمن باز' },
-    { src: 'assets/gallery/shot_07.webp', caption: 'مسیر اختصاصی استخر سرپوشیده' },
-    { src: 'assets/gallery/shot_09.webp', caption: 'پارکینگ نمایشی با نورپردازی ویژه', big: true },
-    { src: 'assets/gallery/shot_08.webp', caption: 'راهروی شیشه‌ای میان درختان' },
-    { src: 'assets/gallery/shot_11.webp', caption: 'فضای بازی و سرگرمی خانوادگی' },
-    { src: 'assets/gallery/shot_12.webp', caption: 'بولینگ اختصاصی داخل مجموعه' },
-    { src: 'assets/gallery/shot_13.webp', caption: 'سالن نشیمن با نورپردازی لوستر' },
-    { src: 'assets/gallery/shot_10.webp', caption: 'نمای بیرونی ساختمان در غروب' },
-    { src: 'assets/gallery/shot_15.webp', caption: 'زمین ورزشی روی پشت‌بام مجموعه', big: true },
-  ];
+  const GALLERY_MAX = 30;
+  const GALLERY_EXTENSIONS = ['webp', 'jpg', 'jpeg', 'png'];
+
+  function probeImage(src) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(src);
+      img.onerror = () => resolve(null);
+      img.src = src;
+    });
+  }
+
+  async function findSlotImage(index) {
+    const n = String(index).padStart(2, '0');
+    for (const ext of GALLERY_EXTENSIONS) {
+      const found = await probeImage(`assets/gallery/shot_${n}.${ext}`);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  async function discoverGalleryItems() {
+    const found = [];
+    let consecutiveMisses = 0;
+    for (let i = 1; i <= GALLERY_MAX; i++) {
+      const src = await findSlotImage(i);
+      if (src) {
+        found.push(src);
+        consecutiveMisses = 0;
+      } else {
+        consecutiveMisses++;
+        // Numbering is meant to be sequential (shot_01, shot_02, ...).
+        // Once we hit a few empty slots in a row, assume the album ends
+        // there instead of probing all the way to GALLERY_MAX every time.
+        if (consecutiveMisses >= 3) break;
+      }
+    }
+    return found;
+  }
 
   /* ---------------------------------------------------------------
      Custom cursor
@@ -226,16 +254,23 @@
   /* ---------------------------------------------------------------
      Gallery grid + lightbox
   --------------------------------------------------------------- */
-  function initGallery() {
+  async function initGallery() {
     const grid = document.getElementById('galleryGrid');
     if (!grid) return;
 
+    grid.innerHTML = '<div class="gallery__loading">در حال بارگذاری تصاویر…</div>';
+    const galleryItems = await discoverGalleryItems();
+
+    if (!galleryItems.length) {
+      grid.innerHTML = '';
+      return;
+    }
+
     grid.innerHTML = galleryItems
       .map(
-        (item, i) => `
-      <div class="gallery__item${item.big ? ' gallery__item--big' : ''}" data-index="${i}" data-cursor="مشاهده">
-        <img src="${item.src}" alt="${item.caption}" loading="lazy">
-        <span class="gallery__caption">${item.caption}</span>
+        (src, i) => `
+      <div class="gallery__item" data-index="${i}" data-cursor="مشاهده">
+        <img src="${src}" alt="نمونه‌کار هلدینگ گیتی‌پسند" loading="lazy">
       </div>`
       )
       .join('');
@@ -243,13 +278,13 @@
     const lightbox = document.getElementById('lightbox');
     const lbImage = document.getElementById('lbImage');
     const lbCaption = document.getElementById('lbCaption');
+    if (lbCaption) lbCaption.style.display = 'none';
     let current = 0;
 
     const open = (i) => {
       current = i;
-      lbImage.src = galleryItems[i].src;
-      lbImage.alt = galleryItems[i].caption;
-      lbCaption.textContent = galleryItems[i].caption;
+      lbImage.src = galleryItems[i];
+      lbImage.alt = 'نمونه‌کار هلدینگ گیتی‌پسند';
       lightbox.classList.add('is-open');
       document.body.style.overflow = 'hidden';
     };
